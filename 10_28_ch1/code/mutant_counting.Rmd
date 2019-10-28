@@ -1,1 +1,182 @@
-### Placeholder
+---
+title: "MSMB Chapter 1 Review: Simulating Random Events"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Biology Context
+
+Let's start with the example problem from Modern Statistics for Modern Biology Section 1.2. An HIV virus has a per-base-pair mutation rate of $5*10^{-4}$ mutations/replication. We start by asking if we can simulate whether or not one particular base pair will mutate during a given replication. 
+
+If each base pair has a probability of $5*10^{-4}$ to mutate, one intuitive way to do this would be to select a random number between 0 and 1, and if the number is between 0 and $5*10^{-4}$, say the base pair mutated, and otherwise say no. 
+
+```{r Single Base Pair}
+mutation_prob<-5e-4 #Assigning the mutation rate
+## We simulate using the r function runif to call a Random number from a UNIForm distribution
+decision_number<-runif(1) #we only want 1 number
+mutation<-mutation_prob>=decision_number #Did a mutation occur?
+print(mutation)
+```
+
+What we just did was a $\textit{Bernoulli Trial}$, which is just the statistics word for flipping a biased coin. In our simulation, we can say a mutation is heads and no mutation is tails and the probability of the coin landing on heads is 0.05%. If we assume, like a coin flip, each trial is independent of the other trials, we can just do them over and over again to simulate many random events. For example, if we assume each nucleotide in the HIV genome undergoes substitution mutations independently of the other base pairs (which yeah yeah but for the sake of learning), then we can say the total number of base pair mutations in one replication is the sum of (number of bp) Bernoulli Trials. 
+
+```{r Multiple Base Pairs Part 1}
+## What about a whole genome's worth? How many would we expect? How variable would we expect this rate to be?
+## Let's simulate to find out
+## First, for the sake of everyone getting the same answer we can set the random number generator.
+set.seed(1297)
+decision_numbers<-runif(1e4) #R tip: the first argument for runif is the how many random numbers you want, so if you set a large number you get back a vector of numbers
+total_mutations<-sum(decision_numbers<=mutation_prob) #R tip: R encodes FALSE=0 and TRUE=1 for the purpose of converting logical symbols to numbers. So sum({logical vector}) will give you the number of TRUEs. Also, the logical operators >,<,!=,== etc can automatically tell when you're comparing a single numeric to a vector and will do the comparison on the entire vector at once. Caution: If you compare two vectors of different lengths to each other, R will do some weird stuff, so avoid doing that. 
+print(total_mutations)
+## Pretty close to our expectation no?
+```
+## Doing a bunch of Bernoulli Trials Over and Over is Exhausting
+Don't worry, I agree. Fortunately, so did statisticians a long time ago. In fact, they characterized a function for determining the probability of $p$ successes in $n$ Bernoulli Trials as a $\textit{Binomial Distribution}$ written $Bin(n,p)$. R has a built in function to simulate numbers of successes according to a binomial distribution - rbinom. Special note: This distribution in particular assumes that we do not care about the order of the successes and failures, just the total number. 
+
+```{r Multiple Base Pairs Part 2}
+## Now we can quickly sample the number of mutations for a genome replication
+number_mutations<-rbinom(n=1,size=1e4,prob=mutation_prob) ## The n argument here tells us how many random numbers we want to generate, so this time we say 1 for 1 replication. 
+print(number_mutations)
+```
+## What if we want to look at what happens over many (independent) genome replications?
+
+Based on what we've built up so far, we have a computational strategy for simulating (1) whether or not any give base pair mutates during one replication (Bernoulli Trial); (2) how many mutations occur over an entire genome during one replication (Sum of independent Bernoulli Trials or Binomial random number). 
+What if we want to know something about the distribution of the sum of genome-wide mutations during the replication process? We've learned now that we expect for there to be about 5 mutations per replication, but how likely is 5 compared to 4 or 6? 10? Let's do some simulations to find out.
+
+R has 3 ways (I can immediately think of) to perform this simulation, so we're going to try all of them and see if we get the same result from every method. First, we're going to rely on our good old Bernoulli trials. If the number of mutations in one genome replication is the sum of Bernoulli trials equal to the number of base pairs in the genome, why not just do that but many times? To make the code a little tidier we're going to use the apply R function. 
+```{r Multiple Genome Replications}
+## This was for one replication for one genome. To get a feeling for the variance, we can simulate a bunch of times
+## We're going to make this fast by using the apply family of functions
+n_genomes=5000 #Say we're going to look at 5000 genomes replicating
+## Now we're going to store the information from our simulation of each genome in a matrix
+## For this matrix, the columns will each represent 1 genome, and the rows will each represent 
+## 1 base pair. The number (simulated by runif) will represent the Bernoulli trial conducted on
+## that base pair for that genome. If the value is <= mutation rate, we call that a mutation.
+decision_matrix<-matrix(data=runif(1e4*n_genomes),ncol=n_genomes) 
+## Let's see what this matrix looks like
+str(decision_matrix)
+## To operate on all columns of this matrix at once, we'll use apply.
+## In R, the apply family of functions is there so that you don't have to worry about
+## writing your own for loops to perform a function many times. apply works specifically on
+## matrices. The function goes like this:
+## apply(matrix, (1 for apply a function to every row, 2 for every column), function)
+## In this implementation we're using an anonymous function, which means that we only define it
+## in the command where we use it, so it isn't stored in memory. I do this a lot for my own convenience
+## when I want to do an operation that I'm only ever going to want to do once and don't want to bother
+## writing out the proper function for it, here I'm just demonstrating. 
+## The syntax of an anonymous function is the same as the syntax of a regular function
+## function(variables) {what to return} So in this case our function takes input x
+## where x is a column of decision_matrix and gives me the number of TRUE's for x<=mutation_prob
+n_mutations<-apply(decision_matrix,2,function(x) sum(x<=mutation_prob))
+## Let's see what we got
+## First we can check out the format of the output
+str(n_mutations)
+## We get one number for each column
+hist(n_mutations,main='Number Mutations per Replication')
+## Now let's learn a little bit about this simulations
+avg_number_mutations<-mean(n_mutations)
+var_number_mutations<-var(n_mutations)
+
+print(avg_number_mutations)
+print(var_number_mutations)
+## Interesting... the mean and the variance appear to be the same. And remember, std dev = sqrt(var)
+## so the standard deviation of this distribution would be like sqrt(5)~2.236
+```
+## Can we do this faster?
+
+Spoiler alert: Yes. While we had to go through the entire rigmarole of simulating each individual base pair for each individual replication with Bernoulli trials, we already know that by selecting binomial random numbers we can simulate one entire genome replication all at once. So let's save ourselves the time and use rbinom.
+
+```{r Binomial Simulation}
+## This is gonna be so much easier
+mutation_binomial<-rbinom(n_genomes,size=1e4,prob=mutation_prob)
+## Boom
+hist(mutation_binomial,xlab='n_mutations',main='Histogram of Binomial Simulations')
+## Now let's learn something about the distribution
+binomial_mean<-mean(mutation_binomial)
+binomial_var<-var(mutation_binomial)
+print(binomial_mean)
+print(binomial_var)
+
+## Ooh look at that very similar to our Bernoulli trial-based approach. 
+## Note again that mean~variance. Also, note that this distribution is *asymmetric* looking.
+
+```
+## Something I've Been Hiding
+We can take a brief second to throw in some math notation and talk about what's going on under the hood here. We are able to conduct these simulations and generate random numbers with a probability distribution, which is characterized by a $\textit{Probability Mass Function (PMF)}$. For a Bernoulli Trial, the PMF is pretty simple. If we assign probability $p$ to a mutation and probability $1-p$ to no mutation, then we say:
+
+$P(X=mutation)=p, P(X=no~mutation)=1-p$.
+
+The PMF of a Binomial distribution is the product of $n$ independent Bernoulli trials. So we can guess the PMF for $k$ mutations in $n$ base pairs will look something like:
+
+$P(X=k)=p^k(1-p)^{n-k}$
+
+BUT. Like I cautioned earlier, we don't care about the order in this case, so there are many possible ways to get $k$ successes in $n$ trials, so we need to add the probabilities of all of those together. In fact, the number of ways can be explained by a fancy operator called $\textit{choose}$, which we write like
+
+$P(X=k)={n\choose k}p^k(1-p)^{n-k}$
+
+You can look up the exact formula for how it's calculated, but R has function choose(n,k) that allows you to not. The fact of the matter, however, is that it's a pain to compute for large numbers because it involves factorials.
+
+```{r Comparing Theory to Simulations}
+## Simulating with Poisson distribution
+mutations_pois<-rpois(n_genomes,1e4*mutation_prob)
+## The syntax here is the same as the binomial, except this time we only provide one parameter
+## lambda, which in the binomial framework is n*p. 
+hist(n_mutations,main='Bernoulli Simulation + Poisson Density',freq=FALSE)
+lines(0:15,dpois(0:15,lambda=5),col='blue',lwd=2)
+legend(legend=c('Simulation','Theory'),fill=c('black','blue'),
+       x=8,y=0.15)
+
+## Let's do a slightly more sophisticated visualization
+## Using library of all libraries, ggplot2
+library(ggplot2)
+## Before we can do ggplots, we need to transform the data into a data.frame
+method_labels<-rep(c('Bernoulli','Binomial','Poisson'),each=n_genomes)
+plotting_data_frame<-data.frame(method=method_labels,
+                                result=c(n_mutations,mutation_binomial,mutations_pois))
+## Constructing out plot
+sim_plot<-ggplot(plotting_data_frame)+
+  geom_bar(aes(x=result,fill=method,group=method),position='dodge')
+sim_plot
+
+## This is a good start but we can jazz this up to be much more readable
+sim_plot_nicer<-sim_plot+
+  facet_wrap(~method,ncol=1)+
+  xlab('Number Mutations')+
+  ylab('Frequency')+
+  scale_fill_brewer(name='Simulation Method',palette='Set2')+
+  theme_bw()+
+  theme(strip.background=element_blank(),
+        text=element_text(size=18))
+sim_plot_nicer
+
+## And now we can compare our simulation schemes and see that they all follow from each other, cool!
+library(dplyr)
+summary_info<-plotting_data_frame %>%
+  group_by(method) %>%
+  summarize(mean_val=mean(result),
+            var_val=var(result),
+            sd_val=sqrt(var_val)) %>%
+  mutate(x_pos=13,
+         y_pos=750)
+sim_plot_with_additional_info<-sim_plot_nicer+
+  geom_text(data=summary_info,
+            aes(x=x_pos,y=y_pos,label=paste0('Mean: ',mean_val)),
+            size=4)+
+  geom_text(data=summary_info,
+            aes(x=x_pos,y=y_pos-200,label=paste0('Var: ',round(var_val,4))),
+            size=4)
+sim_plot_with_additional_info
+  
+
+
+```
+
+## The Poisson Distribution's More Data-Friendly Partner, the Negative Binomial
+
+
+```{r Demoing Negative Binomial Distribution}
+
+```
